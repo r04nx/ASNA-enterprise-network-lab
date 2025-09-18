@@ -1,0 +1,110 @@
+name: enterprise-network
+
+topology:
+  nodes:
+    # Core Router
+    router:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.22.22.10
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 192.168.1.1/24 dev eth1
+        - ip addr add 192.168.100.1/24 dev eth2
+
+    # Core Switch
+    core-switch:
+      kind: bridge
+
+    # Engineering Switch  
+    eng-switch:
+      kind: bridge
+
+    # Sales Switch
+    sales-switch:
+      kind: bridge
+
+    # DMZ Switch
+    dmz-switch:
+      kind: bridge
+
+    # Engineering Workstations
+    eng-ws1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.22.22.101
+      exec:
+        - ip addr add 192.168.10.10/24 dev eth1
+        - ip route add default via 192.168.10.1
+        - apk add --no-cache curl wget htop
+
+    eng-ws2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.22.22.102
+      exec:
+        - ip addr add 192.168.10.11/24 dev eth1
+        - ip route add default via 192.168.10.1
+        - apk add --no-cache curl wget htop
+
+    # Sales Workstations
+    sales-ws1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.22.22.103
+      exec:
+        - ip addr add 192.168.20.10/24 dev eth1
+        - ip route add default via 192.168.20.1
+        - apk add --no-cache curl wget
+
+    sales-ws2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.22.22.104
+      exec:
+        - ip addr add 192.168.20.11/24 dev eth1
+        - ip route add default via 192.168.20.1
+        - apk add --no-cache curl wget
+
+    # Servers
+    web-server:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.22.22.200
+      exec:
+        - ip addr add 192.168.100.10/24 dev eth1
+        - ip route add default via 192.168.100.1
+
+    file-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.22.22.201
+      exec:
+        - ip addr add 192.168.1.10/24 dev eth1
+        - ip route add default via 192.168.1.1
+        - apk add --no-cache python3
+
+  links:
+    # Router to switches
+    - endpoints: ["router:eth1", "core-switch:eth1"]
+    - endpoints: ["router:eth2", "dmz-switch:eth1"]
+    
+    # Core switch to department switches
+    - endpoints: ["core-switch:eth2", "eng-switch:eth1"]
+    - endpoints: ["core-switch:eth3", "sales-switch:eth1"]
+    - endpoints: ["core-switch:eth4", "file-server:eth1"]
+    
+    # Engineering department
+    - endpoints: ["eng-switch:eth2", "eng-ws1:eth1"]
+    - endpoints: ["eng-switch:eth3", "eng-ws2:eth1"]
+    
+    # Sales department
+    - endpoints: ["sales-switch:eth2", "sales-ws1:eth1"]
+    - endpoints: ["sales-switch:eth3", "sales-ws2:eth1"]
+    
+    # DMZ
+    - endpoints: ["dmz-switch:eth2", "web-server:eth1"]
+
+mgmt:
+  network: enterprise-mgmt
+  ipv4-subnet: 172.22.22.0/24

@@ -1,0 +1,438 @@
+name: comprehensive-enterprise
+
+topology:
+  nodes:
+    # ============= CORE LAYER =============
+    core-router-1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.10
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache quagga iptables
+        - ip addr add 10.0.0.1/30 dev eth1      # WAN/Internet
+        - ip addr add 10.1.0.1/24 dev eth2      # Core LAN
+        - ip addr add 10.255.255.1/30 dev eth3  # Core-to-Core link
+        - echo "Core Router 1" > /etc/hostname
+
+    core-router-2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.11
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache quagga iptables
+        - ip addr add 10.1.0.2/24 dev eth1      # Core LAN
+        - ip addr add 10.255.255.2/30 dev eth2  # Core-to-Core link
+        - echo "Core Router 2" > /etc/hostname
+
+    # Core Firewall
+    core-firewall:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.12
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables ipset
+        - ip addr add 10.1.0.5/24 dev eth1
+        - iptables -P FORWARD DROP
+        - iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+        - echo "Core Firewall" > /etc/hostname
+
+    # ============= DISTRIBUTION LAYER =============
+    dist-switch-main:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.20
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils vlan
+        - ip addr add 10.1.0.10/24 dev eth1     # Uplink to core
+        - ip addr add 10.10.0.1/24 dev eth2     # Engineering distribution
+        - ip addr add 10.20.0.1/24 dev eth3     # Sales distribution
+        - ip addr add 10.30.0.1/24 dev eth4     # Server distribution
+        - echo "Main Distribution Switch" > /etc/hostname
+
+    dist-switch-backup:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.21
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils vlan
+        - ip addr add 10.1.0.11/24 dev eth1     # Uplink to core
+        - echo "Backup Distribution Switch" > /etc/hostname
+
+    # ============= ACCESS LAYER =============
+    # Engineering Access Switches
+    access-eng-sw1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.31
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.10.0.10/24 dev eth1    # Uplink
+        - ip addr add 10.10.10.1/24 dev eth2    # Engineering VLAN 10
+        - ip route add default via 10.10.0.1
+        - echo "Engineering Access Switch 1" > /etc/hostname
+
+    access-eng-sw2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.32
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.10.0.11/24 dev eth1    # Uplink
+        - ip addr add 10.10.20.1/24 dev eth2    # Engineering VLAN 20
+        - ip route add default via 10.10.0.1
+        - echo "Engineering Access Switch 2" > /etc/hostname
+
+    # Sales Access Switch
+    access-sales-sw:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.41
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.20.0.10/24 dev eth1    # Uplink
+        - ip addr add 10.20.10.1/24 dev eth2    # Sales VLAN
+        - ip route add default via 10.20.0.1
+        - echo "Sales Access Switch" > /etc/hostname
+
+    # Server Access Switch
+    access-server-sw:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.51
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.30.0.10/24 dev eth1    # Uplink
+        - ip addr add 10.30.10.1/24 dev eth2    # Server VLAN
+        - ip route add default via 10.30.0.1
+        - echo "Server Access Switch" > /etc/hostname
+
+    # ============= CLIENT DEVICES =============
+    # Engineering Workstations (GUI enabled)
+    eng-dev-gui:
+      kind: linux
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+      mgmt-ipv4: 172.25.25.101
+      exec:
+        - ip addr add 10.10.10.10/24 dev eth1
+        - ip route add default via 10.10.10.1
+        - apt-get update && apt-get install -y firefox curl wget git vim
+      ports:
+        - 6080:6080
+
+    eng-dev-cli:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.102
+      exec:
+        - ip addr add 10.10.10.11/24 dev eth1
+        - ip route add default via 10.10.10.1
+        - apk add --no-cache curl wget git vim htop python3 nodejs npm
+        - echo "Engineering CLI Workstation" > /etc/hostname
+
+    eng-qa-station:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.103
+      exec:
+        - ip addr add 10.10.20.10/24 dev eth1
+        - ip route add default via 10.10.20.1
+        - apk add --no-cache curl wget python3 py3-selenium chromium
+        - echo "QA Testing Station" > /etc/hostname
+
+    # Sales Workstations
+    sales-mgr-gui:
+      kind: linux
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+      mgmt-ipv4: 172.25.25.201
+      exec:
+        - ip addr add 10.20.10.10/24 dev eth1
+        - ip route add default via 10.20.10.1
+        - apt-get update && apt-get install -y firefox libreoffice
+      ports:
+        - 6081:6080
+
+    sales-rep:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.202
+      exec:
+        - ip addr add 10.20.10.11/24 dev eth1
+        - ip route add default via 10.20.10.1
+        - apk add --no-cache curl wget
+        - echo "Sales Representative Workstation" > /etc/hostname
+
+    # Mobile/Tablet Device
+    mobile-device:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.203
+      exec:
+        - ip addr add 10.20.10.20/24 dev eth1
+        - ip route add default via 10.20.10.1
+        - apk add --no-cache curl wget
+        - echo "Mobile Device" > /etc/hostname
+
+    # ============= ENTERPRISE SERVERS =============
+    # Web Application Stack
+    web-frontend:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.25.25.301
+      exec:
+        - ip addr add 10.30.10.10/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - echo "<h1>Enterprise Portal</h1><p>Company Intranet</p>" > /usr/share/nginx/html/index.html
+
+    app-backend:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.302
+      exec:
+        - ip addr add 10.30.10.11/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache python3 py3-flask py3-pip
+        - echo "Application Backend Server" > /etc/hostname
+
+    database-primary:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.303
+      exec:
+        - ip addr add 10.30.10.12/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache postgresql redis
+        - echo "Primary Database Server" > /etc/hostname
+
+    database-replica:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.304
+      exec:
+        - ip addr add 10.30.10.13/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache postgresql
+        - echo "Database Replica Server" > /etc/hostname
+
+    # File and Storage Services
+    file-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.305
+      exec:
+        - ip addr add 10.30.10.20/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache samba nfs-utils python3
+        - mkdir -p /shares/engineering /shares/sales /shares/public /shares/backup
+        - echo "File Server with SMB/NFS" > /etc/hostname
+
+    backup-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.306
+      exec:
+        - ip addr add 10.30.10.21/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache rsync duplicity
+        - echo "Backup Server" > /etc/hostname
+
+    # Monitoring and Management
+    monitoring-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.307
+      exec:
+        - ip addr add 10.30.10.30/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache prometheus grafana
+        - echo "Monitoring Server (Prometheus/Grafana)" > /etc/hostname
+
+    log-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.308
+      exec:
+        - ip addr add 10.30.10.31/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache rsyslog logrotate
+        - echo "Log Server" > /etc/hostname
+
+    # ============= DMZ SERVERS =============
+    dmz-firewall:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.400
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables ipset
+        - ip addr add 10.1.0.20/24 dev eth1     # Internal
+        - ip addr add 10.100.0.1/24 dev eth2    # DMZ
+        - iptables -P FORWARD DROP
+        - iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+        - echo "DMZ Firewall" > /etc/hostname
+
+    public-web:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.25.25.401
+      exec:
+        - ip addr add 10.100.0.10/24 dev eth1
+        - ip route add default via 10.100.0.1
+        - echo "<h1>Company Public Website</h1><p>Welcome to our company</p>" > /usr/share/nginx/html/index.html
+
+    mail-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.402
+      exec:
+        - ip addr add 10.100.0.11/24 dev eth1
+        - ip route add default via 10.100.0.1
+        - apk add --no-cache postfix dovecot
+        - echo "Mail Server" > /etc/hostname
+
+    # ============= IOT DEVICES =============
+    iot-controller:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.501
+      exec:
+        - ip addr add 10.50.0.10/24 dev eth1
+        - ip route add default via 10.50.0.1
+        - apk add --no-cache mosquitto python3 py3-paho-mqtt
+        - echo "IoT Controller" > /etc/hostname
+
+    iot-sensor1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.502
+      exec:
+        - ip addr add 10.50.0.20/24 dev eth1
+        - ip route add default via 10.50.0.1
+        - apk add --no-cache python3 py3-paho-mqtt
+        - echo "Temperature Sensor" > /etc/hostname
+
+    iot-sensor2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.503
+      exec:
+        - ip addr add 10.50.0.21/24 dev eth1
+        - ip route add default via 10.50.0.1
+        - apk add --no-cache python3 py3-paho-mqtt
+        - echo "Motion Sensor" > /etc/hostname
+
+    # IoT Access Switch
+    iot-switch:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.520
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.1.0.50/24 dev eth1     # Uplink
+        - ip addr add 10.50.0.1/24 dev eth2     # IoT VLAN
+        - ip route add default via 10.1.0.1
+        - echo "IoT Access Switch" > /etc/hostname
+
+    # ============= GUEST NETWORK =============
+    guest-firewall:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.600
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables
+        - ip addr add 10.1.0.60/24 dev eth1     # Uplink
+        - ip addr add 10.200.0.1/24 dev eth2    # Guest network
+        - iptables -A FORWARD -s 10.200.0.0/24 -d 10.10.0.0/16 -j DROP
+        - iptables -A FORWARD -s 10.200.0.0/24 -d 10.20.0.0/16 -j DROP
+        - iptables -A FORWARD -s 10.200.0.0/24 -d 10.30.0.0/16 -j DROP
+        - echo "Guest Network Firewall" > /etc/hostname
+
+    guest-device1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.601
+      exec:
+        - ip addr add 10.200.0.10/24 dev eth1
+        - ip route add default via 10.200.0.1
+        - apk add --no-cache curl wget
+        - echo "Guest Device 1" > /etc/hostname
+
+    guest-device2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.602
+      exec:
+        - ip addr add 10.200.0.11/24 dev eth1
+        - ip route add default via 10.200.0.1
+        - apk add --no-cache curl wget
+        - echo "Guest Device 2" > /etc/hostname
+
+  links:
+    # ============= CORE LAYER CONNECTIVITY =============
+    # Core router redundancy
+    - endpoints: ["core-router-1:eth3", "core-router-2:eth2"]
+    
+    # Core to distribution
+    - endpoints: ["core-router-1:eth2", "dist-switch-main:eth1"]
+    - endpoints: ["core-router-2:eth1", "dist-switch-backup:eth1"]
+    - endpoints: ["core-router-1:eth2", "core-firewall:eth1"]
+
+    # ============= DISTRIBUTION TO ACCESS =============
+    # Main distribution to access switches
+    - endpoints: ["dist-switch-main:eth2", "access-eng-sw1:eth1"]
+    - endpoints: ["dist-switch-main:eth2", "access-eng-sw2:eth1"]
+    - endpoints: ["dist-switch-main:eth3", "access-sales-sw:eth1"]
+    - endpoints: ["dist-switch-main:eth4", "access-server-sw:eth1"]
+
+    # Special networks
+    - endpoints: ["dist-switch-main:eth5", "iot-switch:eth1"]
+    - endpoints: ["dist-switch-main:eth6", "guest-firewall:eth1"]
+    - endpoints: ["dist-switch-main:eth7", "dmz-firewall:eth1"]
+
+    # ============= ACCESS TO END DEVICES =============
+    # Engineering devices
+    - endpoints: ["access-eng-sw1:eth2", "eng-dev-gui:eth1"]
+    - endpoints: ["access-eng-sw1:eth3", "eng-dev-cli:eth1"]
+    - endpoints: ["access-eng-sw2:eth2", "eng-qa-station:eth1"]
+
+    # Sales devices
+    - endpoints: ["access-sales-sw:eth2", "sales-mgr-gui:eth1"]
+    - endpoints: ["access-sales-sw:eth3", "sales-rep:eth1"]
+    - endpoints: ["access-sales-sw:eth4", "mobile-device:eth1"]
+
+    # Server connections
+    - endpoints: ["access-server-sw:eth2", "web-frontend:eth1"]
+    - endpoints: ["access-server-sw:eth3", "app-backend:eth1"]
+    - endpoints: ["access-server-sw:eth4", "database-primary:eth1"]
+    - endpoints: ["access-server-sw:eth5", "database-replica:eth1"]
+    - endpoints: ["access-server-sw:eth6", "file-server:eth1"]
+    - endpoints: ["access-server-sw:eth7", "backup-server:eth1"]
+    - endpoints: ["access-server-sw:eth8", "monitoring-server:eth1"]
+    - endpoints: ["access-server-sw:eth9", "log-server:eth1"]
+
+    # IoT devices
+    - endpoints: ["iot-switch:eth2", "iot-controller:eth1"]
+    - endpoints: ["iot-switch:eth3", "iot-sensor1:eth1"]
+    - endpoints: ["iot-switch:eth4", "iot-sensor2:eth1"]
+
+    # Guest network
+    - endpoints: ["guest-firewall:eth2", "guest-device1:eth1"]
+    - endpoints: ["guest-firewall:eth2", "guest-device2:eth1"]
+
+    # DMZ
+    - endpoints: ["dmz-firewall:eth2", "public-web:eth1"]
+    - endpoints: ["dmz-firewall:eth2", "mail-server:eth1"]
+
+mgmt:
+  network: enterprise-mgmt
+  ipv4-subnet: 172.25.25.0/24

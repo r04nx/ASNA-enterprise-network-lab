@@ -1,0 +1,63 @@
+---
+all:
+  children:
+    core_layer:
+      hosts:
+        core-router:
+          ansible_host: clab-enterprise-final-core-router
+        core-firewall:
+          ansible_host: clab-enterprise-final-core-firewall
+    
+    distribution_layer:
+      hosts:
+        dist-eng:
+          ansible_host: clab-enterprise-final-dist-eng
+        dist-sales:
+          ansible_host: clab-enterprise-final-dist-sales
+        dist-servers:
+          ansible_host: clab-enterprise-final-dist-servers
+    
+    access_layer:
+      hosts:
+        access-eng:
+          ansible_host: clab-enterprise-final-access-eng
+        access-sales:
+          ansible_host: clab-enterprise-final-access-sales
+    
+    client_devices:
+      hosts:
+        eng-gui:
+          ansible_host: clab-enterprise-final-eng-gui
+          internal_ip: 192.168.10.10
+        eng-dev:
+          ansible_host: clab-enterprise-final-eng-dev
+          internal_ip: 192.168.10.11
+        sales-gui:
+          ansible_host: clab-enterprise-final-sales-gui
+          internal_ip: 192.168.20.10
+        sales-mobile:
+          ansible_host: clab-enterprise-final-sales-mobile
+          internal_ip: 192.168.20.11
+    
+    servers:
+      hosts:
+        web-server:
+          ansible_host: clab-enterprise-final-web-server
+          internal_ip: 192.168.30.10
+        db-server:
+          ansible_host: clab-enterprise-final-db-server
+          internal_ip: 192.168.30.11
+        file-server:
+          ansible_host: clab-enterprise-final-file-server
+          internal_ip: 192.168.30.12
+    
+    dmz:
+      hosts:
+        public-web:
+          ansible_host: clab-enterprise-final-public-web
+          internal_ip: 192.168.100.10
+
+  vars:
+    ansible_connection: docker
+    ansible_user: root
+    ansible_remote_tmp: /tmp

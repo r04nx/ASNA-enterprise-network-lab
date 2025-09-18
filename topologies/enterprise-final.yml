@@ -1,0 +1,163 @@
+name: enterprise-final
+
+topology:
+  nodes:
+    # ============= CORE LAYER =============
+    core-router:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables quagga
+        - echo "Core Enterprise Router" > /etc/hostname
+
+    core-firewall:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables ipset
+        - echo "Core Firewall" > /etc/hostname
+
+    # ============= DISTRIBUTION LAYER =============
+    dist-eng:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils vlan
+        - echo "Engineering Distribution Switch" > /etc/hostname
+
+    dist-sales:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils vlan
+        - echo "Sales Distribution Switch" > /etc/hostname
+
+    dist-servers:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils vlan
+        - echo "Server Distribution Switch" > /etc/hostname
+
+    # ============= ACCESS LAYER =============
+    access-eng:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - echo "Engineering Access Switch" > /etc/hostname
+
+    access-sales:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - echo "Sales Access Switch" > /etc/hostname
+
+    # ============= CLIENT DEVICES =============
+    # Engineering GUI Workstation
+    eng-gui:
+      kind: linux
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+      ports:
+        - 6080:6081
+      exec:
+        - ip addr add 192.168.10.10/24 dev eth1
+        - ip route add default via 192.168.10.1
+
+    # Engineering CLI Developer
+    eng-dev:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.10.11/24 dev eth1
+        - ip route add default via 192.168.10.1
+        - apk add --no-cache curl wget git vim htop python3 nodejs npm
+        - echo "Engineering Developer" > /etc/hostname
+
+    # Sales GUI Manager  
+    sales-gui:
+      kind: linux
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+      ports:
+        - 6081:6081
+      exec:
+        - ip addr add 192.168.20.10/24 dev eth1
+        - ip route add default via 192.168.20.1
+
+    # Sales Mobile Device
+    sales-mobile:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.20.11/24 dev eth1
+        - ip route add default via 192.168.20.1
+        - apk add --no-cache curl wget
+        - echo "Sales Mobile" > /etc/hostname
+
+    # ============= SERVERS =============
+    web-server:
+      kind: linux
+      image: nginx:alpine
+      exec:
+        - ip addr add 192.168.30.10/24 dev eth1
+        - ip route add default via 192.168.30.1
+        - echo "<h1>Enterprise Portal</h1>" > /usr/share/nginx/html/index.html
+
+    db-server:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.30.11/24 dev eth1
+        - ip route add default via 192.168.30.1
+        - apk add --no-cache postgresql sqlite
+        - echo "Database Server" > /etc/hostname
+
+    file-server:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.30.12/24 dev eth1
+        - ip route add default via 192.168.30.1
+        - apk add --no-cache samba python3
+        - mkdir -p /shares/eng /shares/sales
+        - echo "File Server" > /etc/hostname
+
+    # ============= DMZ =============
+    public-web:
+      kind: linux
+      image: nginx:alpine
+      exec:
+        - ip addr add 192.168.100.10/24 dev eth1
+        - ip route add default via 192.168.100.1
+        - echo "<h1>Public Website</h1>" > /usr/share/nginx/html/index.html
+
+  links:
+    # Core infrastructure
+    - endpoints: ["core-router:eth1", "core-firewall:eth1"]
+    - endpoints: ["core-router:eth2", "dist-eng:eth1"] 
+    - endpoints: ["core-router:eth3", "dist-sales:eth1"]
+    - endpoints: ["core-router:eth4", "dist-servers:eth1"]
+    - endpoints: ["core-router:eth5", "public-web:eth1"]
+
+    # Distribution to access
+    - endpoints: ["dist-eng:eth2", "access-eng:eth1"]
+    - endpoints: ["dist-sales:eth2", "access-sales:eth1"]
+
+    # Access to devices
+    - endpoints: ["access-eng:eth2", "eng-gui:eth1"]
+    - endpoints: ["access-eng:eth3", "eng-dev:eth1"]
+    - endpoints: ["access-sales:eth2", "sales-gui:eth1"]
+    - endpoints: ["access-sales:eth3", "sales-mobile:eth1"]
+
+    # Servers
+    - endpoints: ["dist-servers:eth2", "web-server:eth1"]
+    - endpoints: ["dist-servers:eth3", "db-server:eth1"]
+    - endpoints: ["dist-servers:eth4", "file-server:eth1"]

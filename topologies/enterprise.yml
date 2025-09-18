@@ -1,0 +1,109 @@
+name: enterprise
+
+topology:
+  nodes:
+    # === CORE ROUTER ===
+    router:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # === DEPARTMENT SWITCHES ===
+    eng-switch:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 192.168.10.1/24 dev eth2
+
+    sales-switch:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 192.168.20.1/24 dev eth2
+
+    server-switch:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 192.168.30.1/24 dev eth2
+
+    # === WORKSTATIONS ===
+    eng1:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.10.10/24 dev eth1
+        - ip route add default via 192.168.10.1
+        - apk add --no-cache curl wget git vim
+
+    eng2:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.10.11/24 dev eth1
+        - ip route add default via 192.168.10.1
+        - apk add --no-cache curl wget git vim
+
+    sales1:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.20.10/24 dev eth1
+        - ip route add default via 192.168.20.1
+        - apk add --no-cache curl wget
+
+    sales2:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.20.11/24 dev eth1
+        - ip route add default via 192.168.20.1
+        - apk add --no-cache curl wget
+
+    # === SERVERS ===
+    web-server:
+      kind: linux
+      image: nginx:alpine
+      exec:
+        - ip addr add 192.168.30.10/24 dev eth1
+        - ip route add default via 192.168.30.1
+
+    db-server:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.30.11/24 dev eth1
+        - ip route add default via 192.168.30.1
+        - apk add --no-cache sqlite
+
+    file-server:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip addr add 192.168.30.12/24 dev eth1
+        - ip route add default via 192.168.30.1
+        - apk add --no-cache python3
+        - mkdir -p /shared
+
+  links:
+    # Router to switches
+    - endpoints: ["router:eth1", "eng-switch:eth1"]
+    - endpoints: ["router:eth2", "sales-switch:eth1"]
+    - endpoints: ["router:eth3", "server-switch:eth1"]
+    
+    # Engineering department
+    - endpoints: ["eng-switch:eth2", "eng1:eth1"]
+    - endpoints: ["eng-switch:eth3", "eng2:eth1"]
+    
+    # Sales department
+    - endpoints: ["sales-switch:eth2", "sales1:eth1"]
+    - endpoints: ["sales-switch:eth3", "sales2:eth1"]
+    
+    # Servers
+    - endpoints: ["server-switch:eth2", "web-server:eth1"]
+    - endpoints: ["server-switch:eth3", "db-server:eth1"]
+    - endpoints: ["server-switch:eth4", "file-server:eth1"]

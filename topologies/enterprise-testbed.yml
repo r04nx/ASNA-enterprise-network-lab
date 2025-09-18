@@ -1,0 +1,141 @@
+name: enterprise-testbed
+
+topology:
+  nodes:
+    # === CORE LAYER ===
+    core-router:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.10
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # === DISTRIBUTION LAYER ===
+    dist-eng:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.20
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 10.1.0.10/24 dev eth1
+        - ip addr add 10.1.10.1/24 dev eth2
+        - ip route add default via 10.1.0.1
+
+    dist-sales:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.21
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 10.1.0.20/24 dev eth1
+        - ip addr add 10.1.20.1/24 dev eth2
+        - ip route add default via 10.1.0.1
+
+    dist-servers:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.22
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 10.1.0.30/24 dev eth1
+        - ip addr add 10.1.30.1/24 dev eth2
+        - ip route add default via 10.1.0.1
+
+    # === ENGINEERING WORKSTATIONS ===
+    eng-dev1:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.101
+      exec:
+        - ip addr add 10.1.10.10/24 dev eth1
+        - ip route add default via 10.1.10.1
+        - apk add --no-cache curl wget git vim
+
+    eng-dev2:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.102
+      exec:
+        - ip addr add 10.1.10.11/24 dev eth1
+        - ip route add default via 10.1.10.1
+        - apk add --no-cache curl wget git vim
+
+    # === SALES WORKSTATIONS ===
+    sales-mgr:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.201
+      exec:
+        - ip addr add 10.1.20.10/24 dev eth1
+        - ip route add default via 10.1.20.1
+        - apk add --no-cache curl wget
+
+    sales-rep:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.202
+      exec:
+        - ip addr add 10.1.20.11/24 dev eth1
+        - ip route add default via 10.1.20.1
+        - apk add --no-cache curl wget
+
+    # === ENTERPRISE SERVERS ===
+    web-server:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.23.23.301
+      exec:
+        - ip addr add 10.1.30.10/24 dev eth1
+        - ip route add default via 10.1.30.1
+
+    db-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.302
+      exec:
+        - ip addr add 10.1.30.11/24 dev eth1
+        - ip route add default via 10.1.30.1
+        - apk add --no-cache sqlite
+
+    file-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.23.23.303
+      exec:
+        - ip addr add 10.1.30.12/24 dev eth1
+        - ip route add default via 10.1.30.1
+        - apk add --no-cache python3
+        - mkdir -p /shared && echo "Enterprise File Share" > /shared/readme.txt
+
+    # === DMZ SERVERS ===
+    dmz-web:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.23.23.401
+      exec:
+        - ip addr add 10.2.0.10/24 dev eth1
+        - ip route add default via 10.2.0.1
+
+  links:
+    # Core router configuration - single uplink per distribution switch
+    - endpoints: ["core-router:eth1", "dist-eng:eth1"]
+    - endpoints: ["core-router:eth2", "dist-sales:eth1"] 
+    - endpoints: ["core-router:eth3", "dist-servers:eth1"]
+    - endpoints: ["core-router:eth4", "dmz-web:eth1"]
+
+    # Engineering department
+    - endpoints: ["dist-eng:eth2", "eng-dev1:eth1"]
+    - endpoints: ["dist-eng:eth3", "eng-dev2:eth1"]
+
+    # Sales department  
+    - endpoints: ["dist-sales:eth2", "sales-mgr:eth1"]
+    - endpoints: ["dist-sales:eth3", "sales-rep:eth1"]
+
+    # Server infrastructure
+    - endpoints: ["dist-servers:eth2", "web-server:eth1"]
+    - endpoints: ["dist-servers:eth3", "db-server:eth1"]
+    - endpoints: ["dist-servers:eth4", "file-server:eth1"]
+
+mgmt:
+  network: enterprise-mgmt
+  ipv4-subnet: 172.23.23.0/24

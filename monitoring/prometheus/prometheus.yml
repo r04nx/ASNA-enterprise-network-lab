@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Host system metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Network device monitoring (to be expanded)
+  - job_name: 'network-devices'
+    static_configs:
+      - targets: 
+        
+        - '172.20.20.12:9100'   # access-eng
+        - '172.20.20.15:9100'   # access-sales
+        - '172.20.20.13:9100'   # core-firewall
+        - '172.20.20.16:9100'   # core-router
+        - '172.20.20.2:9100'   # db-server
+        - '172.20.20.14:9100'   # dist-eng
+        - '172.20.20.3:9100'   # dist-sales
+        - '172.20.20.9:9100'   # dist-servers
+        - '172.20.20.5:9100'   # eng-dev
+        - '172.20.20.10:9100'   # eng-gui
+        - '172.20.20.7:9100'   # file-server
+        - '172.20.20.4:9100'   # public-web
+        - '172.20.20.19:9100'   # sales-gui
+        - '172.20.20.11:9100'   # sales-mobile
+        - '172.20.20.6:9100'   # web-server

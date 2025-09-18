@@ -1,0 +1,122 @@
+# Containerlab generated files
+labs/clab-*/
+*.json
+*.log
+
+# But keep lab directories structure (empty folders)
+!labs/clab-*/.gitkeep
+
+# Ansible
+*.retry
+.vault_pass.txt
+vault_password_file
+host_vars/
+group_vars/*/vault*
+*.vault
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+.#*
+#*#
+
+# SSL/TLS certificates (keep structure but not actual certs)
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+
+# But keep CA directories structure
+!**/.tls/ca/.gitkeep
+
+# Monitoring data
+prometheus_data/
+grafana_data/
+alertmanager_data/
+
+# Configuration backups
+*.backup
+*.orig
+
+# Test outputs
+test-results/
+coverage/
+.coverage
+.pytest_cache/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Network captures
+*.pcap
+*.pcapng
+
+# Containerlab topology data (generated)
+topology-data.json
+ansible-inventory.yml
+nornir-simple-inventory.yml
+authorized_keys
+
+# Local development
+.local/
+local_*
+dev_*

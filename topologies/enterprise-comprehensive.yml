@@ -1,0 +1,262 @@
+name: enterprise-comprehensive
+
+topology:
+  nodes:
+    # ============= CORE LAYER =============
+    core-router:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.10
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables
+        - ip addr add 10.1.0.1/24 dev eth1      # Core backbone
+        - ip addr add 10.100.0.1/24 dev eth2    # DMZ
+        - echo "Core Router" > /etc/hostname
+
+    core-firewall:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.11
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache iptables ipset
+        - ip addr add 10.1.0.5/24 dev eth1
+        - iptables -P FORWARD ACCEPT  # For testing, normally DROP
+        - echo "Core Firewall" > /etc/hostname
+
+    # ============= DISTRIBUTION LAYER =============
+    dist-eng:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.20
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.1.0.10/24 dev eth1     # Uplink
+        - ip addr add 10.10.0.1/24 dev eth2     # Engineering network
+        - ip route add default via 10.1.0.1
+        - echo "Engineering Distribution Switch" > /etc/hostname
+
+    dist-sales:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.21
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.1.0.20/24 dev eth1     # Uplink
+        - ip addr add 10.20.0.1/24 dev eth2     # Sales network
+        - ip route add default via 10.1.0.1
+        - echo "Sales Distribution Switch" > /etc/hostname
+
+    dist-servers:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.22
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - apk add --no-cache bridge-utils
+        - ip addr add 10.1.0.30/24 dev eth1     # Uplink
+        - ip addr add 10.30.0.1/24 dev eth2     # Server network
+        - ip route add default via 10.1.0.1
+        - echo "Server Distribution Switch" > /etc/hostname
+
+    # ============= ACCESS LAYER =============
+    access-eng:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.31
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 10.10.0.10/24 dev eth1    # Uplink
+        - ip addr add 10.10.10.1/24 dev eth2    # Access ports
+        - ip route add default via 10.10.0.1
+        - echo "Engineering Access Switch" > /etc/hostname
+
+    access-sales:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.32
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 10.20.0.10/24 dev eth1    # Uplink
+        - ip addr add 10.20.10.1/24 dev eth2    # Access ports
+        - ip route add default via 10.20.0.1
+        - echo "Sales Access Switch" > /etc/hostname
+
+    access-servers:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.33
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 10.30.0.10/24 dev eth1    # Uplink
+        - ip addr add 10.30.10.1/24 dev eth2    # Server access
+        - ip route add default via 10.30.0.1
+        - echo "Server Access Switch" > /etc/hostname
+
+    # ============= CLIENT DEVICES WITH VARIETY =============
+    # Engineering - GUI Workstation
+    eng-gui-ws:
+      kind: linux
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+      mgmt-ipv4: 172.25.25.101
+      exec:
+        - ip addr add 10.10.10.10/24 dev eth1
+        - ip route add default via 10.10.10.1
+      ports:
+        - 6080:6080
+
+    # Engineering - CLI Developer Machine
+    eng-dev:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.102
+      exec:
+        - ip addr add 10.10.10.11/24 dev eth1
+        - ip route add default via 10.10.10.1
+        - apk add --no-cache curl wget git vim htop python3 nodejs npm docker
+        - echo "Engineering Developer CLI" > /etc/hostname
+
+    # Engineering - QA/Testing Machine
+    eng-qa:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.103
+      exec:
+        - ip addr add 10.10.10.12/24 dev eth1
+        - ip route add default via 10.10.10.1
+        - apk add --no-cache curl wget python3 chromium selenium-java
+        - echo "QA Testing Machine" > /etc/hostname
+
+    # Sales - Manager GUI Workstation
+    sales-mgr:
+      kind: linux
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+      mgmt-ipv4: 172.25.25.201
+      exec:
+        - ip addr add 10.20.10.10/24 dev eth1
+        - ip route add default via 10.20.10.1
+      ports:
+        - 6081:6080
+
+    # Sales - Representative Laptop
+    sales-laptop:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.202
+      exec:
+        - ip addr add 10.20.10.11/24 dev eth1
+        - ip route add default via 10.20.10.1
+        - apk add --no-cache curl wget firefox
+        - echo "Sales Laptop" > /etc/hostname
+
+    # Sales - Mobile Device Simulation
+    sales-mobile:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.203
+      exec:
+        - ip addr add 10.20.10.12/24 dev eth1
+        - ip route add default via 10.20.10.1
+        - apk add --no-cache curl wget
+        - echo "Sales Mobile Device" > /etc/hostname
+
+    # ============= ENTERPRISE SERVERS =============
+    web-server:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.25.25.301
+      exec:
+        - ip addr add 10.30.10.10/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - echo "<h1>Enterprise Portal</h1><p>Internal company website</p>" > /usr/share/nginx/html/index.html
+
+    app-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.302
+      exec:
+        - ip addr add 10.30.10.11/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache python3 py3-flask
+        - echo "Application Server" > /etc/hostname
+
+    db-primary:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.303
+      exec:
+        - ip addr add 10.30.10.12/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache postgresql redis
+        - echo "Primary Database" > /etc/hostname
+
+    file-server:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.304
+      exec:
+        - ip addr add 10.30.10.13/24 dev eth1
+        - ip route add default via 10.30.10.1
+        - apk add --no-cache samba python3
+        - mkdir -p /shares/engineering /shares/sales
+        - echo "Enterprise File Server" > /etc/hostname
+
+    # ============= DMZ =============
+    public-web:
+      kind: linux
+      image: nginx:alpine
+      mgmt-ipv4: 172.25.25.401
+      exec:
+        - ip addr add 10.100.0.10/24 dev eth1
+        - ip route add default via 10.100.0.1
+        - echo "<h1>Public Company Website</h1>" > /usr/share/nginx/html/index.html
+
+    mail-relay:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.25.25.402
+      exec:
+        - ip addr add 10.100.0.11/24 dev eth1
+        - ip route add default via 10.100.0.1
+        - apk add --no-cache postfix
+        - echo "Mail Relay Server" > /etc/hostname
+
+  links:
+    # ============= CORE LAYER =============
+    - endpoints: ["core-router:eth1", "core-firewall:eth1"]
+    
+    # ============= DISTRIBUTION CONNECTIONS =============
+    - endpoints: ["core-router:eth1", "dist-eng:eth1"]
+    - endpoints: ["core-router:eth1", "dist-sales:eth1"]
+    - endpoints: ["core-router:eth1", "dist-servers:eth1"]
+    
+    # DMZ
+    - endpoints: ["core-router:eth2", "public-web:eth1"]
+    - endpoints: ["core-router:eth2", "mail-relay:eth1"]
+
+    # ============= ACCESS CONNECTIONS =============
+    # Engineering
+    - endpoints: ["dist-eng:eth2", "access-eng:eth1"]
+    - endpoints: ["access-eng:eth2", "eng-gui-ws:eth1"]
+    - endpoints: ["access-eng:eth3", "eng-dev:eth1"]
+    - endpoints: ["access-eng:eth4", "eng-qa:eth1"]
+
+    # Sales
+    - endpoints: ["dist-sales:eth2", "access-sales:eth1"]
+    - endpoints: ["access-sales:eth2", "sales-mgr:eth1"]
+    - endpoints: ["access-sales:eth3", "sales-laptop:eth1"]
+    - endpoints: ["access-sales:eth4", "sales-mobile:eth1"]
+
+    # Servers
+    - endpoints: ["dist-servers:eth2", "access-servers:eth1"]
+    - endpoints: ["access-servers:eth2", "web-server:eth1"]
+    - endpoints: ["access-servers:eth3", "app-server:eth1"]
+    - endpoints: ["access-servers:eth4", "db-primary:eth1"]
+    - endpoints: ["access-servers:eth5", "file-server:eth1"]
+
+mgmt:
+  network: enterprise-mgmt
+  ipv4-subnet: 172.25.25.0/24
