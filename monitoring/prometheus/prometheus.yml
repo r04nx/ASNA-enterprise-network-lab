@@ -22,7 +22,7 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Network device monitoring
+  # Network device monitoring (existing node exporters)
   - job_name: 'network-devices'
     static_configs:
       - targets: 
@@ -41,3 +41,30 @@ scrape_configs:
         - '172.20.20.15:9100'  # sales-gui
         - '172.20.20.6:9100'   # sales-mobile
         - '172.20.20.11:9100'  # web-server
+
+  # Self-Healing Agents - Enhanced Monitoring
+  - job_name: 'selfheal-agents'
+    scrape_interval: 2s
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+        # Core Layer
+        - '172.20.20.10:9200'  # core-router
+        - '172.20.20.2:9200'   # core-firewall
+        # Distribution Layer  
+        - '172.20.20.11:9200'  # dist-eng
+        - '172.20.20.16:9200'  # dist-sales
+        - '172.20.20.8:9200'   # dist-servers
+        # Access Layer
+        - '172.20.20.15:9200'  # access-eng
+        - '172.20.20.12:9200'  # access-sales
+        # Client Devices
+        - '172.20.20.14:9200'  # eng-gui
+        - '172.20.20.3:9200'   # eng-dev
+        - '172.20.20.4:9200'   # sales-gui
+        - '172.20.20.13:9200'  # sales-mobile
+        # Servers
+        - '172.20.20.7:9200'   # web-server
+        - '172.20.20.9:9200'   # db-server
+        - '172.20.20.6:9200'   # file-server
+        - '172.20.20.5:9200'   # public-web

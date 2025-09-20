@@ -120,3 +120,17 @@ authorized_keys
 .local/
 local_*
 dev_*
+
+# Generated test results and logs
+results/
+test_results_*/
+journal_results_*/
+mttr_results_*.json
+paper_testing_*.log
+*.pyc
+__pycache__/
+*.log
+
+# Temporary directories
+grafana-provisioning/
+prometheus.yml/

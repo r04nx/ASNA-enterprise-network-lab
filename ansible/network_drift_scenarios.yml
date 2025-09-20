@@ -1,0 +1,61 @@
+---
+- name: Network Configuration Drift Scenarios
+  hosts: client_devices
+  gather_facts: no
+  vars:
+    target_host: "{{ ansible_host }}"
+
+  tasks:
+    - name: Display target information
+      debug:
+        msg: "Running drift scenario on {{ target_host }} ({{ internal_ip | default('N/A') }})"
+
+    - name: Scenario 1 - Introduce TC netem delay (simulating network drift)
+      shell: |
+        tc qdisc add dev eth0 root netem delay 200ms 50ms
+      when: drift_scenario == "netem_delay"
+      ignore_errors: yes
+
+    - name: Scenario 2 - Remove default route (network isolation)
+      shell: |
+        ip route del default
+      when: drift_scenario == "remove_default_route"
+      ignore_errors: yes
+
+    - name: Scenario 3 - Bring down interface (complete isolation)
+      shell: |
+        ip link set eth0 down
+      when: drift_scenario == "interface_down"
+      ignore_errors: yes
+
+    - name: Scenario 4 - Add incorrect routing (partial drift)
+      shell: |
+        ip route add default via 192.168.1.1 metric 50
+      when: drift_scenario == "wrong_route"
+      ignore_errors: yes
+
+    - name: Scenario 5 - TC netem packet loss (network degradation)
+      shell: |
+        tc qdisc add dev eth0 root netem loss 25%
+      when: drift_scenario == "packet_loss"
+      ignore_errors: yes
+
+- name: Clear all network drift scenarios
+  hosts: client_devices
+  gather_facts: no
+  tasks:
+    - name: Remove all TC rules
+      shell: |
+        tc qdisc del dev eth0 root || true
+      ignore_errors: yes
+
+    - name: Restore interface
+      shell: |
+        ip link set eth0 up
+      ignore_errors: yes
+
+    - name: Restore default route (if needed)
+      shell: |
+        ip route add default via 172.20.20.1 dev eth0 || true
+      ignore_errors: yes
+      when: restore_routes | default(false)
