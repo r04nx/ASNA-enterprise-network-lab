@@ -1,0 +1,15 @@
+name: asna-mini
+mgmt:
+  network: asna-mini-net
+  ipv4-subnet: 10.10.10.0/24
+  ipv6-subnet: 3fff:10:10:10::/64
+
+topology:
+  nodes:
+    host-a:
+      kind: linux
+      image: ubuntu:22.04
+    web:
+      kind: linux
+      image: nginx:alpine
+  links: []

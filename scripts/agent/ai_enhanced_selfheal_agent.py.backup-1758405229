@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 AI-Enhanced Self-Healing Network Agent with Machine Learning Capabilities
-ENHANCED VERSION: Autodiscovery with layered configuration + periodic re-detect
 Advanced implementation with RL-based decision making and comprehensive network management
+ENHANCED VERSION: Robust connectivity testing with multiple fallback mechanisms
 """
 
 import os
@@ -16,7 +16,6 @@ import threading
 import pickle
 import hashlib
 import ipaddress
-import argparse
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -25,166 +24,21 @@ import statistics
 import math
 import numpy as np
 
-# Configuration strategy: autodiscovery with layered overrides (CLI > file > env > autodiscovery)
+# Configuration from environment
+DEVICE_NAME = os.environ.get("DEVICE_NAME", socket.gethostname())
+DEVICE_ROLE = os.environ.get("DEVICE_ROLE", "unknown")
+DEVICE_IP = os.environ.get("DEVICE_IP", "unknown")
+EXPECTED_SUBNET = os.environ.get("EXPECTED_SUBNET", "172.20.20.0/24")
+IFACE = os.environ.get("AGENT_IFACE", "eth0")
+GATEWAY = os.environ.get("AGENT_GATEWAY", "172.20.20.1")
+CHECK_HOST = os.environ.get("AGENT_CHECK_HOST", "172.20.20.7")
+CHECK_PORT = int(os.environ.get("AGENT_CHECK_PORT", "80"))
 SLEEP_INTERVAL = int(os.environ.get("AGENT_SLEEP", "2"))
 LOG_LEVEL = os.environ.get("AGENT_LOG_LEVEL", "INFO")
+METRICS_PORT = int(os.environ.get("METRICS_PORT", "9200"))
 LEARNING_RATE = float(os.environ.get("AI_LEARNING_RATE", "0.1"))
 EXPLORATION_RATE = float(os.environ.get("AI_EXPLORATION_RATE", "0.2"))
 NETWORK_TOOLS_VALIDATED = os.environ.get("NETWORK_TOOLS_VALIDATED", "false").lower() == "true"
-
-def _run(cmd):
-    try:
-        return subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=5)
-    except Exception as e:
-        return subprocess.CompletedProcess(cmd, 1, '', str(e))
-
-def _default_iface_and_gw():
-    r = _run("ip -4 route show default")
-    if r.returncode == 0 and r.stdout.strip():
-        parts = r.stdout.split()
-        gw = parts[2] if "via" in parts else None
-        iface = parts[-1]
-        return iface, gw
-    return None, None
-
-def _iface_ipv4_cidr(iface):
-    r = _run(f"ip -4 addr show {iface}")
-    if r.returncode != 0:
-        return None
-    for line in r.stdout.splitlines():
-        line = line.strip()
-        if line.startswith("inet "):
-            return line.split()[1]  # e.g. 10.10.10.2/24
-    return None
-
-def _subnet_from_cidr(cidr):
-    try:
-        return str(ipaddress.ip_network(cidr, strict=False))
-    except Exception:
-        return None
-
-def _resolve_service_candidates():
-    candidates = [
-        os.getenv("SERVICE_CHECK_NAME"),
-        "web", "public-web", "nginx", "gateway", "prometheus",
-    ]
-    ips = []
-    for name in [c for c in candidates if c]:
-        try:
-            ips.append(socket.gethostbyname(name))
-        except socket.gaierror:
-            pass
-    return ips
-
-def _tcp_probe(host, port, timeout=1.5):
-    try:
-        s = socket.socket()
-        s.settimeout(timeout)
-        rc = s.connect_ex((host, port))
-        s.close()
-        return rc == 0
-    except Exception:
-        return False
-
-def _autodiscover_check_target(iface, gw):
-    for ip in _resolve_service_candidates():
-        if _tcp_probe(ip, 80) or _tcp_probe(ip, 8080):
-            return ip, 80
-    if gw and _tcp_probe(gw, 80):
-        return gw, 80
-    cidr = _iface_ipv4_cidr(iface)
-    if cidr:
-        net = ipaddress.ip_network(cidr, strict=False)
-        count = 0
-        for host in net.hosts():
-            hip = str(host)
-            if hip.endswith('.1'):
-                continue
-            if _tcp_probe(hip, 80):
-                return hip, 80
-            count += 1
-            if count >= 32:
-                break
-    return (gw or "1.1.1.1"), 80
-
-def discover_config():
-    auto = {}
-    auto["device_name"] = socket.gethostname()
-    iface, gw = _default_iface_and_gw()
-    if not iface:
-        r = _run("ip -o link show | awk -F': ' '/state UP/ {print $2; exit}'")
-        iface = (r.stdout or "eth0").strip()
-    auto["iface"] = iface
-    auto["gateway"] = gw
-    cidr = _iface_ipv4_cidr(iface)
-    auto["ip_cidr"] = cidr
-    auto["expected_subnet"] = _subnet_from_cidr(cidr) if cidr else None
-    chk_host, chk_port = _autodiscover_check_target(iface, gw)
-    auto["check_host"], auto["check_port"] = chk_host, chk_port
-    # pick metrics port 9200..9202
-    mport = None
-    for base in [9200, 9201, 9202]:
-        try:
-            s = socket.socket(); s.bind(("0.0.0.0", base)); s.close(); mport = base; break
-        except OSError:
-            continue
-    auto["metrics_port"] = mport or 9200
-    return auto
-
-def _load_file_config(path_yaml="/etc/asna/agent.yaml", path_json="/etc/asna/agent.json"):
-    cfg = {}
-    try:
-        import yaml
-        if os.path.exists(path_yaml):
-            with open(path_yaml) as f:
-                cfg.update(yaml.safe_load(f) or {})
-    except Exception:
-        pass
-    try:
-        if os.path.exists(path_json):
-            import json
-            with open(path_json) as f:
-                cfg.update(json.load(f) or {})
-    except Exception:
-        pass
-    return cfg
-
-def merge_config(auto_cfg):
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--iface"); parser.add_argument("--gateway")
-    parser.add_argument("--check-host"); parser.add_argument("--check-port", type=int)
-    parser.add_argument("--metrics-port", type=int)
-    parser.add_argument("--role")
-    args, _ = parser.parse_known_args()
-
-    file_cfg = _load_file_config()
-    env = os.environ
-
-    def pick(key, cast=lambda x: x, default=None):
-        cli_val = getattr(args, key.replace('-', '_'), None)
-        file_val = file_cfg.get(key)
-        env_val = env.get(key.upper().replace('-', '_'))
-        auto_val = auto_cfg.get(key)
-        for v in (cli_val, file_val, env_val, auto_val):
-            if v is not None:
-                try:
-                    return cast(v)
-                except Exception:
-                    return default
-        return default
-
-    cfg = {
-        "device_name": auto_cfg.get("device_name", socket.gethostname()),
-        "role": pick("role", str, "unknown"),
-        "iface": pick("iface", str, auto_cfg.get("iface", "eth0")),
-        "gateway": pick("gateway", str, auto_cfg.get("gateway")),
-        "check_host": pick("check-host", str, auto_cfg.get("check_host")),
-        "check_port": pick("check-port", int, auto_cfg.get("check_port", 80)),
-        "metrics_port": pick("metrics-port", int, auto_cfg.get("metrics_port", 9200)),
-        "expected_subnet": auto_cfg.get("expected_subnet"),
-        "ip_cidr": auto_cfg.get("ip_cidr"),
-    }
-    return cfg
 
 # Setup logging
 logging.basicConfig(
@@ -193,7 +47,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
-# logger adapter will be set after CONFIG is built
+logger = logging.LoggerAdapter(logger, {'device': DEVICE_NAME})
 
 class NetworkConnectivityTester:
     """Enhanced connectivity testing with multiple fallback mechanisms"""
@@ -387,7 +241,7 @@ class NetworkState:
             if not self.ip_config:
                 return False
             current_ip = ipaddress.ip_address(self.ip_config.split('/')[0])
-            expected_network = ipaddress.ip_network(CONFIG.get("expected_subnet", "0.0.0.0/0"), strict=False)
+            expected_network = ipaddress.ip_network(EXPECTED_SUBNET, strict=False)
             return current_ip in expected_network
         except:
             return False
@@ -397,8 +251,7 @@ class NetworkState:
         try:
             if not self.routing_table:
                 return False
-            gw = CONFIG.get("gateway")
-            return (gw and gw in str(self.routing_table)) and ("default" in str(self.routing_table))
+            return GATEWAY in str(self.routing_table) and "default" in str(self.routing_table)
         except:
             return False
 
@@ -498,15 +351,13 @@ def get_network_state():
     state = NetworkState()
     state.timestamp = time.time()
     
-    iface = CONFIG.get("iface", "eth0")
-    
     # Interface status
-    result, _ = run_cmd(f"ip link show {iface}")
+    result, _ = run_cmd(f"ip link show {IFACE}")
     if result and result.returncode == 0:
         state.interface_status = "UP" if "state UP" in result.stdout else "DOWN"
     
     # IP configuration 
-    result, _ = run_cmd(f"ip addr show {iface}")
+    result, _ = run_cmd(f"ip addr show {IFACE}")
     if result and result.returncode == 0:
         for line in result.stdout.split('\n'):
             if 'inet ' in line and 'scope global' in line:
@@ -519,12 +370,12 @@ def get_network_state():
         state.routing_table = result.stdout.strip()
     
     # TC rules
-    result, _ = run_cmd(f"tc qdisc show dev {iface}")
+    result, _ = run_cmd(f"tc qdisc show dev {IFACE}")
     if result and result.returncode == 0:
         state.tc_rules = result.stdout.strip()
     
     # Enhanced connectivity test with multiple fallback methods
-    connectivity_tester = NetworkConnectivityTester(CONFIG.get("check_host"), CONFIG.get("check_port", 80))
+    connectivity_tester = NetworkConnectivityTester(CHECK_HOST, CHECK_PORT)
     state.connectivity = connectivity_tester.test_connectivity()
     
     return state
@@ -538,35 +389,28 @@ def validate_and_fix_ip_configuration(current_state):
     if not current_state.ip_config:
         logger.warning("🚨 No IP configuration detected!")
         # Try DHCP first
-        result, _ = run_cmd(f"dhclient -v {CONFIG.get('iface','eth0')}")
+        result, _ = run_cmd(f"dhclient -v {IFACE}")
         if result and result.returncode == 0:
             actions_taken.append("dhcp_renewal")
             logger.info("✅ DHCP renewal successful")
         else:
-            # derive IP from current CIDR if present
-            expected_cidr = CONFIG.get("ip_cidr")
-            if expected_cidr:
-                expected_ip = expected_cidr.split('/')[0]
-            else:
-                expected_ip = None
-            if expected_ip:
-                result, _ = run_cmd(f"ip addr add {expected_ip}/24 dev {CONFIG.get('iface','eth0')}")
-                if result and result.returncode == 0:
-                    actions_taken.append("static_ip_assignment")
-                    logger.info(f"✅ Static IP {expected_ip}/24 assigned")
+            # Fallback to static IP
+            expected_ip = DEVICE_IP if DEVICE_IP != "unknown" else "172.20.20.14"
+            result, _ = run_cmd(f"ip addr add {expected_ip}/24 dev {IFACE}")
+            if result and result.returncode == 0:
+                actions_taken.append("static_ip_assignment")
+                logger.info(f"✅ Static IP {expected_ip}/24 assigned")
     
     elif not current_state.is_ip_in_expected_subnet():
-        logger.warning(f"🚨 IP {current_state.ip_config} not in expected subnet {CONFIG.get('expected_subnet')}")
+        logger.warning(f"🚨 IP {current_state.ip_config} not in expected subnet {EXPECTED_SUBNET}")
         # Remove wrong IP and set correct one
-        run_cmd(f"ip addr flush dev {CONFIG.get('iface','eth0')}")
-        expected_cidr = CONFIG.get("ip_cidr")
-        expected_ip = expected_cidr.split('/')[0] if expected_cidr else None
-        if expected_ip:
-            result, _ = run_cmd(f"ip addr add {expected_ip}/24 dev {CONFIG.get('iface','eth0')}")
-            if result and result.returncode == 0:
-                actions_taken.append("subnet_correction")
-                logger.info(f"✅ IP corrected to {expected_ip}/24")
-                metrics.subnet_corrections += 1
+        run_cmd(f"ip addr flush dev {IFACE}")
+        expected_ip = DEVICE_IP if DEVICE_IP != "unknown" else "172.20.20.14"
+        result, _ = run_cmd(f"ip addr add {expected_ip}/24 dev {IFACE}")
+        if result and result.returncode == 0:
+            actions_taken.append("subnet_correction")
+            logger.info(f"✅ IP corrected to {expected_ip}/24")
+            metrics.subnet_corrections += 1
     
     return actions_taken
 
@@ -583,17 +427,17 @@ def validate_and_fix_gateway(current_state):
         run_cmd("ip route del default", timeout=5)
         
         # Enhanced gateway reachability test using multiple methods
-        connectivity_tester = NetworkConnectivityTester(CONFIG.get("gateway"), 22)
+        connectivity_tester = NetworkConnectivityTester(GATEWAY, 22)  # Try SSH port as it's commonly open
         if connectivity_tester._test_with_ping() or connectivity_tester._test_with_python_socket():
             # Gateway is reachable, add route
-            result, _ = run_cmd(f"ip route add default via {CONFIG.get('gateway')} dev {CONFIG.get('iface','eth0')}")
+            result, _ = run_cmd(f"ip route add default via {GATEWAY} dev {IFACE}")
             if result and result.returncode == 0:
                 actions_taken.append("gateway_route_fixed")
-                logger.info(f"✅ Default gateway {CONFIG.get('gateway')} added")
+                logger.info(f"✅ Default gateway {GATEWAY} added")
                 metrics.gateway_validations += 1
         else:
-            logger.warning(f"⚠️ Gateway {CONFIG.get('gateway')} not reachable, trying route anyway")
-            result, _ = run_cmd(f"ip route add default via {CONFIG.get('gateway')} dev {CONFIG.get('iface','eth0')}")
+            logger.warning(f"⚠️ Gateway {GATEWAY} not reachable, trying route anyway")
+            result, _ = run_cmd(f"ip route add default via {GATEWAY} dev {IFACE}")
             if result and result.returncode == 0:
                 actions_taken.append("gateway_route_forced")
     
@@ -632,7 +476,7 @@ def execute_remediation_action(action):
     actions_taken = []
     
     if action == "fix_interface":
-        result, _ = run_cmd(f"ip link set {CONFIG.get('iface','eth0')} up")
+        result, _ = run_cmd(f"ip link set {IFACE} up")
         if result and result.returncode == 0:
             actions_taken.append("interface_up")
     
@@ -645,23 +489,21 @@ def execute_remediation_action(action):
         actions_taken.extend(validate_and_fix_gateway(current_state))
     
     elif action == "clear_tc_rules":
-        result, _ = run_cmd(f"tc qdisc del dev {CONFIG.get('iface','eth0')} root")
+        result, _ = run_cmd(f"tc qdisc del dev {IFACE} root")
         if result and result.returncode == 0:
             actions_taken.append("tc_cleared")
     
     elif action == "full_network_reset":
         # Comprehensive network reset
-        run_cmd(f"ip link set {CONFIG.get('iface','eth0')} down")
-        run_cmd(f"ip addr flush dev {CONFIG.get('iface','eth0')}")
-        run_cmd(f"tc qdisc del dev {CONFIG.get('iface','eth0')} root")
-        run_cmd(f"ip link set {CONFIG.get('iface','eth0')} up")
+        run_cmd(f"ip link set {IFACE} down")
+        run_cmd(f"ip addr flush dev {IFACE}")
+        run_cmd(f"tc qdisc del dev {IFACE} root")
+        run_cmd(f"ip link set {IFACE} up")
         time.sleep(2)
-        expected_cidr = CONFIG.get("ip_cidr")
-        expected_ip = expected_cidr.split('/')[0] if expected_cidr else None
-        if expected_ip:
-            run_cmd(f"ip addr add {expected_ip}/24 dev {CONFIG.get('iface','eth0')}")
-        if CONFIG.get('gateway'):
-            run_cmd(f"ip route add default via {CONFIG.get('gateway')} dev {CONFIG.get('iface','eth0')}")
+        
+        expected_ip = DEVICE_IP if DEVICE_IP != "unknown" else "172.20.20.14"
+        run_cmd(f"ip addr add {expected_ip}/24 dev {IFACE}")
+        run_cmd(f"ip route add default via {GATEWAY} dev {IFACE}")
         actions_taken.append("full_reset")
         
     elif action == "wait_and_retry":
@@ -679,107 +521,98 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             
-            device_name = CONFIG.get('device_name')
-            role = CONFIG.get('role','unknown')
-            ip = (CONFIG.get('ip_cidr') or '0.0.0.0/0').split('/')[0]
-            iface = CONFIG.get('iface')
-            
             # Basic health and network metrics
             metrics_text = f"""# HELP selfheal_agent_health Current health status (1=healthy, 0=unhealthy)
 # TYPE selfheal_agent_health gauge
-selfheal_agent_health{{device="{device_name}",role="{role}",ip="{ip}"}} {1 if current_health_status else 0}
+selfheal_agent_health{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {1 if current_health_status else 0}
 
 # HELP selfheal_network_connectivity Network connectivity status (1=connected, 0=disconnected)
 # TYPE selfheal_network_connectivity gauge
-selfheal_network_connectivity{{device="{device_name}",role="{role}",ip="{ip}"}} {1 if current_connectivity_status else 0}
+selfheal_network_connectivity{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {1 if current_connectivity_status else 0}
 
 # HELP selfheal_interface_status Network interface status (1=up, 0=down)
 # TYPE selfheal_interface_status gauge
-selfheal_interface_status{{device="{device_name}",role="{role}",ip="{ip}",interface="{iface}"}} {1 if current_interface_status == "UP" else 0}
+selfheal_interface_status{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}",interface="{IFACE}"}} {1 if current_interface_status == "UP" else 0}
 
 # HELP selfheal_default_route_status Default route status (1=correct, 0=missing/wrong)
 # TYPE selfheal_default_route_status gauge
-selfheal_default_route_status{{device="{device_name}",role="{role}",ip="{ip}"}} {1 if current_route_status else 0}
+selfheal_default_route_status{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {1 if current_route_status else 0}
 
 # HELP selfheal_ip_config_correct IP configuration correctness (1=correct, 0=wrong)
 # TYPE selfheal_ip_config_correct gauge
-selfheal_ip_config_correct{{device="{device_name}",role="{role}",ip="{ip}"}} {1 if current_ip_status else 0}
+selfheal_ip_config_correct{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {1 if current_ip_status else 0}
 
 # HELP selfheal_tc_drift_detected TC drift detected (1=drift, 0=clean)
 # TYPE selfheal_tc_drift_detected gauge
-selfheal_tc_drift_detected{{device="{device_name}",role="{role}",ip="{ip}",interface="{iface}"}} {1 if current_tc_drift else 0}
+selfheal_tc_drift_detected{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}",interface="{IFACE}"}} {1 if current_tc_drift else 0}
 
 # HELP selfheal_ai_decisions_total Total AI decisions made
 # TYPE selfheal_ai_decisions_total counter
-selfheal_ai_decisions_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.ai_decisions_total}
+selfheal_ai_decisions_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.ai_decisions_total}
 
 # HELP selfheal_ai_successful_decisions_total Total successful AI decisions
 # TYPE selfheal_ai_successful_decisions_total counter
-selfheal_ai_successful_decisions_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.ai_successful_decisions}
+selfheal_ai_successful_decisions_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.ai_successful_decisions}
 
 # HELP selfheal_ai_exploration_decisions_total AI exploration decisions
 # TYPE selfheal_ai_exploration_decisions_total counter
-selfheal_ai_exploration_decisions_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.ai_exploration_decisions}
+selfheal_ai_exploration_decisions_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.ai_exploration_decisions}
 
 # HELP selfheal_ai_exploitation_decisions_total AI exploitation decisions
 # TYPE selfheal_ai_exploitation_decisions_total counter
-selfheal_ai_exploitation_decisions_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.ai_exploitation_decisions}
+selfheal_ai_exploitation_decisions_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.ai_exploitation_decisions}
 
 # HELP selfheal_ai_learning_updates_total AI learning updates performed
 # TYPE selfheal_ai_learning_updates_total counter
-selfheal_ai_learning_updates_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.ai_learning_updates}
+selfheal_ai_learning_updates_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.ai_learning_updates}
 
 # HELP selfheal_ai_confidence_score AI confidence score (0-1)
 # TYPE selfheal_ai_confidence_score gauge
-selfheal_ai_confidence_score{{device="{device_name}",role="{role}",ip="{ip}"}} {rl_agent.get_confidence_score():.1f}
+selfheal_ai_confidence_score{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {rl_agent.get_confidence_score():.1f}
 
 # HELP selfheal_complex_ip_fixes_total Complex IP fixes performed
 # TYPE selfheal_complex_ip_fixes_total counter
-selfheal_complex_ip_fixes_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.complex_ip_fixes}
+selfheal_complex_ip_fixes_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.complex_ip_fixes}
 
 # HELP selfheal_gateway_validations_total Gateway validations performed
 # TYPE selfheal_gateway_validations_total counter
-selfheal_gateway_validations_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.gateway_validations}
+selfheal_gateway_validations_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.gateway_validations}
 
 # HELP selfheal_subnet_corrections_total Subnet corrections performed
 # TYPE selfheal_subnet_corrections_total counter
-selfheal_subnet_corrections_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.subnet_corrections}
+selfheal_subnet_corrections_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.subnet_corrections}
 
 # HELP selfheal_multi_fault_recoveries_total Multi-fault recoveries performed
 # TYPE selfheal_multi_fault_recoveries_total counter
-selfheal_multi_fault_recoveries_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.multi_fault_recoveries}
+selfheal_multi_fault_recoveries_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.multi_fault_recoveries}
 
 # HELP selfheal_mttr_current_seconds Current Mean Time To Recovery
 # TYPE selfheal_mttr_current_seconds gauge
-selfheal_mttr_current_seconds{{device="{device_name}",role="{role}",ip="{ip}"}} {statistics.mean(metrics.mttr_times) if metrics.mttr_times else 0}
+selfheal_mttr_current_seconds{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {statistics.mean(metrics.mttr_times) if metrics.mttr_times else 0}
 
 # HELP selfheal_mttr_average_seconds Average Mean Time To Recovery
 # TYPE selfheal_mttr_average_seconds gauge
-selfheal_mttr_average_seconds{{device="{device_name}",role="{role}",ip="{ip}"}} {statistics.mean(metrics.mttr_times) if metrics.mttr_times else 0}
+selfheal_mttr_average_seconds{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {statistics.mean(metrics.mttr_times) if metrics.mttr_times else 0}
 
 # HELP selfheal_failure_count_total Total failure events
 # TYPE selfheal_failure_count_total counter
-selfheal_failure_count_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.failure_count}
+selfheal_failure_count_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.failure_count}
 
 # HELP selfheal_recovery_count_total Total recovery events
 # TYPE selfheal_recovery_count_total counter
-selfheal_recovery_count_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.recovery_count}
+selfheal_recovery_count_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.recovery_count}
 
 # HELP selfheal_remediation_attempts_total Total remediation attempts
 # TYPE selfheal_remediation_attempts_total counter
-selfheal_remediation_attempts_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.remediation_attempts}
+selfheal_remediation_attempts_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.remediation_attempts}
 
 # HELP selfheal_remediation_successes_total Total successful remediations
 # TYPE selfheal_remediation_successes_total counter
-selfheal_remediation_successes_total{{device="{device_name}",role="{role}",ip="{ip}"}} {metrics.remediation_successes}
+selfheal_remediation_successes_total{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {metrics.remediation_successes}
 
 # HELP selfheal_uptime_seconds Agent uptime in seconds
 # TYPE selfheal_uptime_seconds gauge
-selfheal_uptime_seconds{{device="{device_name}",role="{role}",ip="{ip}"}} {time.time() - metrics.start_time}
-
-# HELP selfheal_discovered_info Discovered configuration information
-# TYPE selfheal_discovered_info gauge
-selfheal_discovered_info{{device="{device_name}",iface="{CONFIG.get('iface')}",gateway="{CONFIG.get('gateway')}",check_host="{CONFIG.get('check_host')}",check_port="{CONFIG.get('check_port')}",metrics_port="{CONFIG.get('metrics_port')}"}} 1
+selfheal_uptime_seconds{{device="{DEVICE_NAME}",role="{DEVICE_ROLE}",ip="{DEVICE_IP}"}} {time.time() - metrics.start_time}
 """
             
             self.wfile.write(metrics_text.encode())
@@ -793,11 +626,11 @@ selfheal_discovered_info{{device="{device_name}",iface="{CONFIG.get('iface')}",g
 
 def start_metrics_server():
     """Start the metrics HTTP server"""
-    server = HTTPServer(('0.0.0.0', CONFIG.get('metrics_port', 9200)), MetricsHandler)
+    server = HTTPServer(('0.0.0.0', METRICS_PORT), MetricsHandler)
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True
     server_thread.start()
-    logger.info(f"📊 Metrics server started on port {CONFIG.get('metrics_port')}")
+    logger.info(f"📊 Metrics server started on port {METRICS_PORT}")
 
 # Global variables for current status
 current_health_status = False
@@ -810,39 +643,19 @@ current_tc_drift = False
 # Initialize global objects
 metrics = MetricsCollector()
 rl_agent = ReinforcementLearningAgent(LEARNING_RATE, EXPLORATION_RATE)
-CONFIG = merge_config(discover_config())
-logger = logging.LoggerAdapter(logger, {'device': CONFIG.get('device_name')})
-
-def periodic_redetect(interval=30):
-    global CONFIG
-    while True:
-        time.sleep(interval)
-        auto = discover_config()
-        merged = merge_config(auto)
-        # Keep metrics port stable for this run; update others dynamically
-        merged['metrics_port'] = CONFIG.get('metrics_port')
-        CONFIG = merged
 
 def main():
     """Main agent loop with enhanced AI decision making"""
     global current_health_status, current_connectivity_status, current_interface_status
     global current_route_status, current_ip_status, current_tc_drift
     
-    logger.info("🤖 Starting AI-Enhanced Self-Healing Network Agent with Robust Connectivity + Autodiscovery")
-    logger.info(f"🎯 Target: {CONFIG.get('check_host')}:{CONFIG.get('check_port')} | Interface: {CONFIG.get('iface')} | Gateway: {CONFIG.get('gateway')}")
+    logger.info("🤖 Starting AI-Enhanced Self-Healing Network Agent with Robust Connectivity Testing")
+    logger.info(f"🎯 Target: {CHECK_HOST}:{CHECK_PORT} | Interface: {IFACE} | Gateway: {GATEWAY}")
     logger.info(f"🧠 AI Config: LR={LEARNING_RATE}, ER={EXPLORATION_RATE}")
     logger.info(f"🛠️  Network Tools Validated: {NETWORK_TOOLS_VALIDATED}")
     
     # Start metrics server
     start_metrics_server()
-    
-    # Start periodic re-detection thread (non-fatal if it fails)
-    try:
-        t = threading.Thread(target=periodic_redetect, daemon=True)
-        t.start()
-        logger.info("🔄 Periodic re-detection started (30s interval)")
-    except Exception as e:
-        logger.warning(f"Periodic re-detect not started: {e}")
     
     failure_start_time = None
     
