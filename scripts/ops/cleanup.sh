@@ -70,7 +70,7 @@ main() {
     
     success "Cleanup completed successfully! 🎉"
     echo ""
-    echo "To redeploy the lab, run: ./setup.sh"
+    echo "To redeploy the lab, run: scripts/ops/setup.sh"
 }
 
 # Handle script interruption

@@ -176,7 +176,7 @@ curl http://172.20.20.14:9200/metrics | grep complex_ip_fixes
 
 ```bash
 # Deploy AI-enhanced agent
-./deploy_ai_agents.sh
+scripts/ops/deploy_ai_agents.sh
 
 # Verify deployment
 docker exec clab-enterprise-final-eng-gui pgrep -f ai_enhanced_selfheal_agent

@@ -75,8 +75,8 @@ main() {
     echo ""
     echo "⚡ Quick Commands:"
     echo "   • Full status:    sudo containerlab inspect --all"
-    echo "   • Stop lab:       ./cleanup.sh"
-    echo "   • Restart setup:  ./setup.sh"
+    echo "   • Stop lab:       scripts/ops/cleanup.sh"
+    echo "   • Restart setup:  scripts/ops/setup.sh"
     
     echo ""
 }

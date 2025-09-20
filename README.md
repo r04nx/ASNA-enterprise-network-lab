@@ -15,10 +15,10 @@ A revolutionary containerlab-based enterprise network simulation environment fea
 
 ```bash
 # Deploy the complete lab with AI-powered monitoring
-./setup.sh
+scripts/ops/setup.sh
 
 # Deploy AI-enhanced self-healing agents with Reinforcement Learning
-./deploy_ai_agents.sh
+scripts/ops/deploy_ai_agents.sh
 ```
 
 This will automatically:
@@ -138,20 +138,20 @@ This project simulates a multi-tier enterprise network architecture including:
 
 ```bash
 # Deploy complete lab with AI agents
-./setup.sh && ./deploy_ai_agents.sh
+scripts/ops/setup.sh && scripts/ops/deploy_ai_agents.sh
 
 # Check lab status including AI metrics
-./status.sh
+scripts/ops/status.sh
 
 # Clean up everything
-./cleanup.sh
+scripts/ops/cleanup.sh
 ```
 
 ### AI Agent Operations
 
 ```bash
 # Deploy AI agents across all devices
-./deploy_ai_agents.sh
+scripts/ops/deploy_ai_agents.sh
 
 # Check AI agent status
 docker exec clab-enterprise-final-eng-gui pgrep -f ai_enhanced_selfheal_agent
@@ -184,13 +184,13 @@ curl http://172.20.20.14:9200/metrics | grep ai_confidence_score
 
 ```bash
 # Quick validation of AI capabilities
-python3 quick_paper_test.py
+python3 tests/quick_paper_test.py
 
 # Comprehensive AI performance testing
-python3 journal_paper_scenarios.py
+python3 tests/journal_paper_scenarios.py
 
 # Custom AI scenario testing
-python3 journal_quality_testing_framework.py
+python3 tests/journal_quality_testing_framework.py
 ```
 
 ### Manual AI Testing
@@ -239,7 +239,7 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
 ## 🚀 What's Included
 
-After running `./setup.sh && ./deploy_ai_agents.sh`, you'll have:
+After running `scripts/ops/setup.sh && scripts/ops/deploy_ai_agents.sh`, you'll have:
 
 ✅ **15-device enterprise network** (routers, switches, servers, workstations)  
 ✅ **Complete monitoring stack** (Prometheus + Grafana + cAdvisor + Node Exporters)
@@ -254,10 +254,10 @@ After running `./setup.sh && ./deploy_ai_agents.sh`, you'll have:
 
 | Command | Purpose |
 |---------|---------|
-| `./setup.sh` | Deploy complete lab |
-| `./deploy_ai_agents.sh` | Deploy AI-enhanced agents |
-| `./status.sh` | Check lab and AI status |
-| `./cleanup.sh` | Remove everything |
+| `scripts/ops/setup.sh` | Deploy complete lab |
+| `scripts/ops/deploy_ai_agents.sh` | Deploy AI-enhanced agents |
+| `scripts/ops/status.sh` | Check lab and AI status |
+| `scripts/ops/cleanup.sh` | Remove everything |
 | `curl http://172.20.20.14:9200/metrics` | View AI metrics |
 
 **Access Grafana**: http://localhost:3000 (admin/asna123)  
@@ -276,7 +276,7 @@ After running `./setup.sh && ./deploy_ai_agents.sh`, you'll have:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/ai-enhancement`)
 3. Make your changes
-4. Test with `./setup.sh && ./deploy_ai_agents.sh`
+4. Test with `scripts/ops/setup.sh && scripts/ops/deploy_ai_agents.sh`
 5. Commit your changes (`git commit -m 'Add AI enhancement'`)
 6. Push to the branch (`git push origin feature/ai-enhancement`)
 7. Open a Pull Request
@@ -298,7 +298,7 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 
 ## 🎉 Ready to explore AI-powered enterprise network healing?
 
-**Run `./setup.sh && ./deploy_ai_agents.sh` to get started with AI-enhanced self-healing!**
+**Run `scripts/ops/setup.sh && scripts/ops/deploy_ai_agents.sh` to get started with AI-enhanced self-healing!**
 
 The future of network management is here. 🚀🤖
 
